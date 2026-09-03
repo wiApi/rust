@@ -1,18 +1,10 @@
-# wi-api — Rust SDK
+# wi-api Rust SDK
 
-[![Crates.io](https://img.shields.io/crates/v/wi-api?style=flat-square&color=0d9373)](https://crates.io/crates/wi-api)
+[![Crates.io](https://img.shields.io/crates/v/wi-api?style=flat-square)](https://crates.io/crates/wi-api)
 [![docs.rs](https://img.shields.io/docsrs/wi-api?style=flat-square)](https://docs.rs/wi-api)
-[![license](https://img.shields.io/crates/l/wi-api?style=flat-square&color=0d9373)](LICENSE)
+[![license](https://img.shields.io/crates/l/wi-api?style=flat-square)](LICENSE)
 
-Official Rust SDK for the [wi-api](https://wi.api.br) WhatsApp platform.
-
-- Async/await with `tokio`
-- Fully typed with `serde`
-- `rustls` by default — no OpenSSL dependency
-- Builder pattern for configuration
-- Feature-gated `axum` and `actix-web` webhook extractors
-
----
+Rust SDK for [wi-api](https://wi.api.br). Async, fully typed, no OpenSSL dependency.
 
 ## Install
 
@@ -22,7 +14,11 @@ wi-api = "0.1"
 tokio = { version = "1", features = ["full"] }
 ```
 
----
+Or with cargo-add:
+
+```bash
+cargo add wi-api
+```
 
 ## Quick start
 
@@ -32,25 +28,27 @@ use wi_api::{Wi, types::SendTextParams};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wi = Wi::new(std::env::var("WI_API_KEY")?);
-    let session = wi.session("my-instance");
 
-    let msg = session.send_text(SendTextParams {
-        to: "5511999999999".into(),
-        text: "Hello from wi-api".into(),
-        ..Default::default()
-    }).await?;
+    let msg = wi
+        .session("my-instance")
+        .send_text(SendTextParams {
+            to: "5511999999999".into(),
+            text: "Hello from wi-api".into(),
+            ..Default::default()
+        })
+        .await?;
 
     println!("sent: {}", msg.message_id);
     Ok(())
 }
 ```
 
----
-
 ## Sessions
 
 ```rust
-// Connect — starts QR or pairphone flow
+let session = wi.session("my-instance");
+
+// Start connection flow
 session.connect().await?;
 
 // Get QR code (base64 PNG)
@@ -59,40 +57,34 @@ println!("{}", qr.qr.unwrap_or_default());
 
 // Pair by phone number
 let result = session.pair_phone("5511999999999").await?;
-println!("{}", result.pair_code.unwrap_or_default()); // 8-char code
+println!("{}", result.pair_code.unwrap_or_default());
 
-// Status
+// Check status
 let status = session.status().await?;
 println!("connected={} phone={:?}", status.connected, status.phone);
 
-// Disconnect / logout
 session.disconnect().await?;
 session.logout().await?;
 ```
-
----
 
 ## Sending messages
 
 ```rust
 use wi_api::types::*;
 
-// Text
 session.send_text(SendTextParams {
     to: "5511999999999".into(),
     text: "Hello!".into(),
     ..Default::default()
 }).await?;
 
-// Image
 session.send_image(SendImageParams {
     to: "5511999999999".into(),
     url: "https://example.com/photo.jpg".into(),
-    caption: Some("Check this out".into()),
+    caption: Some("Look at this".into()),
     ..Default::default()
 }).await?;
 
-// Voice note
 session.send_audio(SendAudioParams {
     to: "5511999999999".into(),
     url: "https://example.com/audio.ogg".into(),
@@ -100,15 +92,13 @@ session.send_audio(SendAudioParams {
     ..Default::default()
 }).await?;
 
-// Document
 session.send_document(SendDocumentParams {
     to: "5511999999999".into(),
     url: "https://example.com/report.pdf".into(),
-    filename: Some("Q3-report.pdf".into()),
+    filename: Some("report.pdf".into()),
     ..Default::default()
 }).await?;
 
-// Location
 session.send_location(SendLocationParams {
     to: "5511999999999".into(),
     latitude: -23.5505,
@@ -117,27 +107,26 @@ session.send_location(SendLocationParams {
     ..Default::default()
 }).await?;
 
-// Reaction
 session.react(SendReactionParams {
     to: "5511999999999".into(),
-    message_id: "MESSAGE_ID".into(),
-    emoji: "👍".into(),
+    message_id: message_id.into(),
+    emoji: "".into(),
     ..Default::default()
 }).await?;
 ```
-
----
 
 ## Webhooks
 
 ```rust
 use wi_api::webhook::{verify_signature, parse_event};
 
-// Axum handler example
+// Axum handler
 async fn webhook(
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> axum::response::Response {
+    use axum::{http::StatusCode, response::IntoResponse};
+
     let sig = headers
         .get("x-wi-signature")
         .and_then(|v| v.to_str().ok())
@@ -146,39 +135,24 @@ async fn webhook(
     let secret = std::env::var("WI_WEBHOOK_SECRET").unwrap();
 
     if !verify_signature(&body, sig, secret.as_bytes()) {
-        return (axum::http::StatusCode::UNAUTHORIZED, "invalid signature").into_response();
+        return (StatusCode::UNAUTHORIZED, "invalid signature").into_response();
     }
 
-    let event = match parse_event(&body) {
-        Ok(e) => e,
-        Err(_) => return (axum::http::StatusCode::BAD_REQUEST, "bad json").into_response(),
-    };
+    let event = parse_event(&body).unwrap();
+    println!("event: {} session: {}", event.event, event.session_id);
 
-    match event.event.as_str() {
-        "message" => {
-            let msg: wi_api::types::IncomingMessage =
-                serde_json::from_str(event.data.get()).unwrap();
-            println!("[{}] {}: {}", msg.chat, msg.from, msg.text.unwrap_or_default());
-        }
-        "connected" => println!("session {} connected", event.session_id),
-        _ => {}
-    }
-
-    (axum::http::StatusCode::NO_CONTENT, "").into_response()
+    StatusCode::NO_CONTENT.into_response()
 }
 ```
 
-### Using `WebhookPayload`
+Using `WebhookPayload`:
 
 ```rust
 use wi_api::webhook::WebhookPayload;
 
-// Returns None if signature invalid — respond 401
 let secret = std::env::var("WI_WEBHOOK_SECRET").unwrap();
-let payload = WebhookPayload::from_parts(body, sig, secret.as_bytes());
-
-match payload {
-    None => (StatusCode::UNAUTHORIZED).into_response(),
+match WebhookPayload::from_parts(body, sig, secret.as_bytes()) {
+    None => StatusCode::UNAUTHORIZED.into_response(),
     Some(Err(e)) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     Some(Ok(p)) => {
         println!("event: {}", p.event.event);
@@ -187,8 +161,6 @@ match payload {
 }
 ```
 
----
-
 ## Error handling
 
 ```rust
@@ -196,17 +168,11 @@ use wi_api::error::WiError;
 
 match session.send_text(params).await {
     Ok(msg) => println!("sent: {}", msg.message_id),
-    Err(WiError::Api { status, message, .. }) => {
-        eprintln!("API error {status}: {message}");
-    }
-    Err(WiError::Request(e)) => {
-        eprintln!("network error: {e}");
-    }
-    Err(e) => eprintln!("error: {e}"),
+    Err(WiError::Api { status, message, .. }) => eprintln!("API {status}: {message}"),
+    Err(WiError::Request(e)) => eprintln!("network: {e}"),
+    Err(e) => eprintln!("{e}"),
 }
 ```
-
----
 
 ## Configuration
 
@@ -219,8 +185,10 @@ let wi = Wi::builder(api_key)
     .build();
 ```
 
----
+## Resources
 
-## License
-
-MIT — [wi.api.br](https://wi.api.br)
+- [crates.io](https://crates.io/crates/wi-api)
+- [docs.rs](https://docs.rs/wi-api)
+- [Dashboard](https://wi.api.br)
+- [Docs](https://docs.wi.api.br)
+- [Changelog](https://github.com/wiApi/rust/releases)
