@@ -23,19 +23,10 @@ impl WiError {
             code: Option<String>,
         }
 
-        let message;
-        let code;
-
-        match res.json::<Body>().await {
-            Ok(b) => {
-                message = b.message.or(b.error).unwrap_or_else(|| format!("HTTP {status}"));
-                code = b.code;
-            }
-            Err(_) => {
-                message = format!("HTTP {status}");
-                code = None;
-            }
-        }
+        let (message, code) = match res.json::<Body>().await {
+            Ok(b) => (b.message.or(b.error).unwrap_or_else(|| format!("HTTP {status}")), b.code),
+            Err(_) => (format!("HTTP {status}"), None),
+        };
 
         WiError::Api { status, message, code }
     }
