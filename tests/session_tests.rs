@@ -14,9 +14,7 @@ use wiremock::{
 };
 
 async fn test_client(server: &MockServer) -> Wi {
-    Wi::builder("test-api-key")
-        .base_url(server.uri())
-        .build()
+    Wi::builder("test-api-key").base_url(server.uri()).build()
 }
 
 fn msg_response() -> serde_json::Value {
@@ -108,7 +106,9 @@ async fn send_text_401_returns_wi_error() {
         .unwrap_err();
 
     match err {
-        WiError::Api { status, message, .. } => {
+        WiError::Api {
+            status, message, ..
+        } => {
             assert_eq!(status, 401);
             assert_eq!(message, "Unauthorized");
         }
@@ -141,7 +141,11 @@ async fn send_text_404_returns_wi_error_with_code() {
         .unwrap_err();
 
     match err {
-        WiError::Api { status, message, code } => {
+        WiError::Api {
+            status,
+            message,
+            code,
+        } => {
             assert_eq!(status, 404);
             assert_eq!(message, "Session not found");
             assert_eq!(code.as_deref(), Some("SESSION_NOT_FOUND"));

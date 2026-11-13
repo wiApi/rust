@@ -89,7 +89,9 @@ impl Session {
 
     pub async fn pair_phone(&self, phone: &str) -> Result<PairPhoneResult, WiError> {
         #[derive(serde::Serialize)]
-        struct Body<'a> { phone: &'a str }
+        struct Body<'a> {
+            phone: &'a str,
+        }
         self.post("/pairphone", &Body { phone }).await
     }
 
@@ -139,12 +141,14 @@ impl Session {
     // ─── Chat ─────────────────────────────────────────────────────────────────
 
     pub async fn mark_read(&self, p: MarkReadParams) -> Result<(), WiError> {
-        self.post::<_, serde_json::Value>("/chat/markread", &p).await?;
+        self.post::<_, serde_json::Value>("/chat/markread", &p)
+            .await?;
         Ok(())
     }
 
     pub async fn presence(&self, p: PresenceParams) -> Result<(), WiError> {
-        self.post::<_, serde_json::Value>("/chat/presence", &p).await?;
+        self.post::<_, serde_json::Value>("/chat/presence", &p)
+            .await?;
         Ok(())
     }
 }

@@ -118,7 +118,7 @@ session.react(SendReactionParams {
 ## Webhooks
 
 ```rust
-use wi_api::webhook::{verify_signature, parse_event};
+use wi_api::webhook::{parse_event, verify_webhook, VerifyOptions};
 
 // Axum handler
 async fn webhook(
@@ -127,14 +127,15 @@ async fn webhook(
 ) -> axum::response::Response {
     use axum::{http::StatusCode, response::IntoResponse};
 
-    let sig = headers
-        .get("x-wi-signature")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
+    // x-wi-signature-v2 (HMAC of "<timestamp>.<body>"), 5 minute replay tolerance.
+    let pairs: Vec<(&str, &str)> = headers
+        .iter()
+        .filter_map(|(k, v)| Some((k.as_str(), v.to_str().ok()?)))
+        .collect();
 
     let secret = std::env::var("WI_WEBHOOK_SECRET").unwrap();
 
-    if !verify_signature(&body, sig, secret.as_bytes()) {
+    if !verify_webhook(&body, &pairs, secret.as_bytes(), VerifyOptions::default()) {
         return (StatusCode::UNAUTHORIZED, "invalid signature").into_response();
     }
 
